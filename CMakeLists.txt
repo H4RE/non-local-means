@@ -2,15 +2,14 @@ cmake_minimum_required(VERSION 3.2 FATAL_ERROR)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ./TEST_)
-
 project(template)
 add_executable(${PROJECT_NAME}
 src/main.cpp
 )
 
 find_package(Halide REQUIRED)
-target_link_libraries(${PROJECT_NAME} PRIVATE Halide::Halide)
+target_link_libraries(${PROJECT_NAME} PRIVATE Halide::Halide Halide::ImageIO)
+
 
 find_package(OpenCV REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS})

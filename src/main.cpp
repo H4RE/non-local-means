@@ -1,7 +1,9 @@
 #include "Halide.h"
+#include "halide_image_io.h"
 #include <iostream>
 #include <opencv2/opencv.hpp>
 #include <type_traits>
+
 
 template <typename T>
 void non_local_means(cv::Mat_<T> &src, cv::Mat_<T> &dest, int search_radius = 10, int patch_radius = 3)
@@ -13,7 +15,7 @@ void non_local_means(cv::Mat_<T> &src, cv::Mat_<T> &dest, int search_radius = 10
     const double stdev_noise2 = stdev_noise * stdev_noise;
     const double param_h = 10;
     const double param_h2_inv = 1.0 / (param_h * param_h);
-    const double k =1.0/(channels*(patch_radius*2+1)*(patch_radius*2+1));
+    const double k = 1.0 / (channels * (patch_radius * 2 + 1) * (patch_radius * 2 + 1));
 
     auto reflect = [](int p, int len)
     {
@@ -51,7 +53,7 @@ void non_local_means(cv::Mat_<T> &src, cv::Mat_<T> &dest, int search_radius = 10
                             }
                         }
                     }
-                    double weight = -std::max(norm*k - 2 * stdev_noise, 0.0) * param_h2_inv;
+                    double weight = -std::max(norm * k - 2 * stdev_noise, 0.0) * param_h2_inv;
                     weight = exp(weight);
 
                     const int y3 = reflect(y + ky, src.rows);
@@ -62,6 +64,7 @@ void non_local_means(cv::Mat_<T> &src, cv::Mat_<T> &dest, int search_radius = 10
             }     // ky
 
             const auto val = weight_sum != 0 ? intensity / weight_sum : src(y, x);
+
             for (int ch = 0; ch < src.channels(); ch++)
             {
                 dest(y, x)[ch] = cv::saturate_cast<Type>(val[ch]);
@@ -72,8 +75,46 @@ void non_local_means(cv::Mat_<T> &src, cv::Mat_<T> &dest, int search_radius = 10
     return;
 }
 
+Halide::Func non_local_means_Halide(Halide::Buffer<uint8_t> &src, int search_radius, int patch_radius)
+{
+    Halide::Var x, y, c;
+    Halide::Var dx, dy;
+
+    Halide::Func src_ex = Halide::BoundaryConditions::mirror_image(src);
+    Halide::Func srcf_ex;
+    srcf_ex(x, y, c) = Halide::cast<float>(src_ex(x, y, c));
+
+    Halide::Func norm;
+    norm(x, y, dx, dy, c) = Halide::pow(src_ex(x, y, c) - srcf_ex(x + dx, y + dy, c), 2);
+    Halide::RDom ch(0, 3);
+    Halide::Func norm_color;
+    norm_color(x, y, dx, dy) += norm(x, y, dx, dy, ch);
+    Halide::RDom patch(-patch_radius, patch_radius * 2 + 1, -patch_radius, patch_radius * 2 + 1);
+    Halide::Func norm_sum;
+    norm_sum(x, y, dx, dy) = Halide::sum(norm_color(x + patch.x, y + patch.y, dx, dy));
+    Halide::Func weight;
+
+    const float stdev_noise2 = 10.0 * 10.0;
+    const float filter_param_h2 = 10.0 * 10.0;
+    const int patch_sizeXch = (patch_radius * 2 + 1) * (patch_radius * 2 + 1) * 3;
+
+    weight(x, y, dx, dy) = Halide::exp(-Halide::max(norm_sum(x, y, dx, dy) / (float)patch_sizeXch - stdev_noise2, 0) / filter_param_h2);
+    Halide::RDom swin(-search_radius, search_radius * 2 + 1, -search_radius, search_radius * 2 + 1);
+    Halide::Func weight_sum;
+    weight_sum(x, y) += weight(x, y, swin.x, swin.y);
+    Halide::Func intensity;
+    intensity(x, y, c) += weight(x, y, swin.x, swin.y) * srcf_ex(x + swin.x, y + swin.y, c);
+
+    Halide::Func dest;
+    dest(x, y, c) = Halide::saturating_cast<uint8_t>(intensity(x, y, c) / weight_sum(x, y));
+
+    dest.compute_root().parallel(y).vectorize(x, 8).unroll(x, 4);
+    return dest;
+}
+
 int main(int argc, char **argv)
 {
+    // naive
     cv::Mat a = cv::imread("./inu.jpg", cv::IMREAD_UNCHANGED);
     cv::Mat_<cv::Vec3b> img = a.clone();
     cv::Mat_<cv::Vec3b> dest = cv::Mat_<cv::Vec3b>::zeros(img.size());
@@ -82,12 +123,51 @@ int main(int argc, char **argv)
 
     timer.reset();
     timer.start();
-    non_local_means(img, dest);
+    non_local_means(img, dest, 5, 2);
     timer.stop();
-    std::cout <<timer.getTimeSec() <<" [ms]"<<std::endl;
+    std::cout << timer.getTimeSec() << " [s]" << std::endl;
+
+    // Halide
+    Halide::Buffer<uint8_t> src = Halide::Tools::load_image("./inu.jpg");
+    // Halide::Buffer<uint8_t> src = imread_halide("./inu.jpg");
+
+    timer.reset();
+    timer.start();
+    Halide::Func out = non_local_means_Halide(src, 5, 2);
+    out.compile_jit(Halide::get_jit_target_from_environment());
+    timer.stop();
+    std::cout << timer.getTimeSec() << " [s]" << std::endl;
+    timer.reset();
+    timer.start();
+    Halide::Buffer<uint8_t> h = out.realize({src.width(), src.height(), 3});
+
+    timer.stop();
+    std::cout << timer.getTimeSec() << " [s]" << std::endl;
+
+    cv::Mat_<cv::Vec3b> dest_h(cv::Size(src.width(), src.height()));
+    for(int y = 0; y < src.height();y++)
+    {
+        for(int x = 0; x < src.width();x++)
+        {
+            for(int c = 0; c < src.channels();c++)
+            {
+                dest_h(y,x)[c] = h(x,y,c);
+            }
+        }
+    }
+    if(dest_h.channels()==3)
+    {
+        std::vector<cv::Mat> s;
+        cv::split(dest_h, s);
+        std::swap(s[0], s[2]);//OpenCV BGR
+        cv::merge(s, dest_h);
+    }
 
     cv::imshow("img", img);
     cv::imshow("dest", dest);
+    // imshow_halide("dest halide", dest_h);
+    cv::imshow("dest halide", dest_h);
+    cv::imshow("diff naive -halide", (dest - dest_h));
     cv::waitKey();
     return 0;
 }
