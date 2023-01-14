@@ -8,13 +8,13 @@ __global__ void non_local_means_CUDA_(unsigned char *src, unsigned char *dest, i
 
     const int patch_sizeXch = (patch_radius * 2 + 1) * (patch_radius * 2 + 1) * channels;
 
-    const float stdev_noise2 = stdev_noise*stdev_noise;
+    const float stdev_noise2 = stdev_noise * stdev_noise;
     const float filter_param_h2 = filter_param_h * filter_param_h;
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     const int y = blockIdx.y * blockDim.y + threadIdx.y;
 
     const int offset = patch_radius + search_radius;
-    const int d_width= width-2*offset;
+    const int d_width = width - 2 * offset;
     if (offset < x && x < width - offset && offset < y && y < height - offset)
     {
         float intensity[3] = {};
@@ -42,7 +42,7 @@ __global__ void non_local_means_CUDA_(unsigned char *src, unsigned char *dest, i
                         }
                     }
                 }
-                double weight = -max(norm /patch_sizeXch- 2 * stdev_noise2, 0.0) / filter_param_h2;
+                double weight = -max(norm / patch_sizeXch - 2 * stdev_noise2, 0.0) / filter_param_h2;
                 weight = exp(weight);
                 weight_sum += weight;
 
@@ -59,7 +59,7 @@ __global__ void non_local_means_CUDA_(unsigned char *src, unsigned char *dest, i
             int round = (int)(value + (value >= 0 ? 0.5 : -0.5));
             uchar sc = static_cast<uchar>(min(value, (double)UCHAR_MAX));
 
-            dest[(y-offset) *d_width * channels + (x-offset) * channels + ch] = sc;
+            dest[(y - offset) * d_width * channels + (x - offset) * channels + ch] = sc;
         }
     }
 }
@@ -67,9 +67,9 @@ void non_local_means_CUDA(cv::Mat &src, cv::Mat &dest, int search_radius, int pa
 {
     cudaEvent_t start, end;
     cudaEventCreate(&start);
-	cudaEventCreate(&end);
+    cudaEventCreate(&end);
     cudaEventRecord(start, 0);
-    cv::Mat src_ex =src.clone();
+    cv::Mat src_ex = src.clone();
     cv::copyMakeBorder(src_ex, src_ex, search_radius + patch_radius, search_radius + patch_radius, search_radius + patch_radius, search_radius + patch_radius, cv::BORDER_REFLECT101);
     uchar *dev_src = nullptr;
     uchar *dev_dest = nullptr;
@@ -101,6 +101,5 @@ void non_local_means_CUDA(cv::Mat &src, cv::Mat &dest, int search_radius, int pa
     cudaEventDestroy(start);
     cudaEventDestroy(end);
 
-    std::cout << time_ms/1000 <<" [s]"<<std::endl;
-
+    std::cout << time_ms / 1000 << " [s]" << std::endl;
 }

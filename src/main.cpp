@@ -98,7 +98,7 @@ Halide::Func non_local_means_Halide(Halide::Buffer<uint8_t> &src, int search_rad
     const float filter_param_h2 = 10.0 * 10.0;
     const int patch_sizeXch = (patch_radius * 2 + 1) * (patch_radius * 2 + 1) * 3;
 
-    weight(x, y, dx, dy) = Halide::exp(-Halide::max(norm_sum(x, y, dx, dy) / (float)patch_sizeXch - 2*stdev_noise2, 0) / filter_param_h2);
+    weight(x, y, dx, dy) = Halide::exp(-Halide::max(norm_sum(x, y, dx, dy) / (float)patch_sizeXch - 2 * stdev_noise2, 0) / filter_param_h2);
     Halide::RDom swin(-search_radius, search_radius * 2 + 1, -search_radius, search_radius * 2 + 1);
     Halide::Func weight_sum;
     weight_sum(x, y) += weight(x, y, swin.x, swin.y);
@@ -170,8 +170,8 @@ int main(int argc, char **argv)
     // imshow_halide("dest halide", dest_h);
     cv::imshow("halide", dest_h);
     cv::imshow("cuda", dest_cuda);
-    cv::imshow("diff cuda - halide", (dest_cuda - dest_h)*50);
-    cv::imshow("diff naive - halide", (dest - dest_h)*50);
+    cv::imshow("diff cuda - halide", (dest_cuda - dest_h) * 50);
+    cv::imshow("diff naive - halide", (dest - dest_h) * 50);
     cv::waitKey();
     return 0;
 }
