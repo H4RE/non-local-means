@@ -3,7 +3,7 @@
 #include <iostream>
 #include <opencv2/opencv.hpp>
 #include <type_traits>
-
+#include "non_local_means.hpp"
 
 template <typename T>
 void non_local_means(cv::Mat_<T> &src, cv::Mat_<T> &dest, int search_radius = 10, int patch_radius = 3)
@@ -53,7 +53,7 @@ void non_local_means(cv::Mat_<T> &src, cv::Mat_<T> &dest, int search_radius = 10
                             }
                         }
                     }
-                    double weight = -std::max(norm * k - 2 * stdev_noise, 0.0) * param_h2_inv;
+                    double weight = -std::max(norm * k - 2 * stdev_noise2, 0.0) * param_h2_inv;
                     weight = exp(weight);
 
                     const int y3 = reflect(y + ky, src.rows);
@@ -98,7 +98,7 @@ Halide::Func non_local_means_Halide(Halide::Buffer<uint8_t> &src, int search_rad
     const float filter_param_h2 = 10.0 * 10.0;
     const int patch_sizeXch = (patch_radius * 2 + 1) * (patch_radius * 2 + 1) * 3;
 
-    weight(x, y, dx, dy) = Halide::exp(-Halide::max(norm_sum(x, y, dx, dy) / (float)patch_sizeXch - stdev_noise2, 0) / filter_param_h2);
+    weight(x, y, dx, dy) = Halide::exp(-Halide::max(norm_sum(x, y, dx, dy) / (float)patch_sizeXch - 2*stdev_noise2, 0) / filter_param_h2);
     Halide::RDom swin(-search_radius, search_radius * 2 + 1, -search_radius, search_radius * 2 + 1);
     Halide::Func weight_sum;
     weight_sum(x, y) += weight(x, y, swin.x, swin.y);
@@ -114,13 +114,16 @@ Halide::Func non_local_means_Halide(Halide::Buffer<uint8_t> &src, int search_rad
 
 int main(int argc, char **argv)
 {
-    // naive
     cv::Mat a = cv::imread("./inu.jpg", cv::IMREAD_UNCHANGED);
     cv::Mat_<cv::Vec3b> img = a.clone();
-    cv::Mat_<cv::Vec3b> dest = cv::Mat_<cv::Vec3b>::zeros(img.size());
-    cv::Mat_<cv::Vec3b> dest2 = cv::Mat_<cv::Vec3b>::zeros(img.size());
     cv::TickMeter timer;
 
+    // Cuda
+    cv::Mat_<cv::Vec3b> dest_cuda = cv::Mat_<cv::Vec3b>::zeros(img.size());
+    non_local_means_CUDA(img, dest_cuda, 5, 2, 10.f, 10.f);
+
+    // naive
+    cv::Mat_<cv::Vec3b> dest = cv::Mat_<cv::Vec3b>::zeros(img.size());
     timer.reset();
     timer.start();
     non_local_means(img, dest, 5, 2);
@@ -129,7 +132,6 @@ int main(int argc, char **argv)
 
     // Halide
     Halide::Buffer<uint8_t> src = Halide::Tools::load_image("./inu.jpg");
-    // Halide::Buffer<uint8_t> src = imread_halide("./inu.jpg");
 
     timer.reset();
     timer.start();
@@ -145,29 +147,31 @@ int main(int argc, char **argv)
     std::cout << timer.getTimeSec() << " [s]" << std::endl;
 
     cv::Mat_<cv::Vec3b> dest_h(cv::Size(src.width(), src.height()));
-    for(int y = 0; y < src.height();y++)
+    for (int y = 0; y < src.height(); y++)
     {
-        for(int x = 0; x < src.width();x++)
+        for (int x = 0; x < src.width(); x++)
         {
-            for(int c = 0; c < src.channels();c++)
+            for (int c = 0; c < src.channels(); c++)
             {
-                dest_h(y,x)[c] = h(x,y,c);
+                dest_h(y, x)[c] = h(x, y, c);
             }
         }
     }
-    if(dest_h.channels()==3)
+    if (dest_h.channels() == 3)
     {
         std::vector<cv::Mat> s;
         cv::split(dest_h, s);
-        std::swap(s[0], s[2]);//OpenCV BGR
+        std::swap(s[0], s[2]); // OpenCV BGR
         cv::merge(s, dest_h);
     }
 
     cv::imshow("img", img);
-    cv::imshow("dest", dest);
+    cv::imshow("naive", dest);
     // imshow_halide("dest halide", dest_h);
-    cv::imshow("dest halide", dest_h);
-    cv::imshow("diff naive -halide", (dest - dest_h));
+    cv::imshow("halide", dest_h);
+    cv::imshow("cuda", dest_cuda);
+    cv::imshow("diff cuda - halide", (dest_cuda - dest_h)*50);
+    cv::imshow("diff naive - halide", (dest - dest_h)*50);
     cv::waitKey();
     return 0;
 }
