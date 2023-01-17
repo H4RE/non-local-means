@@ -9,6 +9,7 @@ enable_language("CUDA")
 include_directories("${CMAKE_SOURCE_DIR}/include/")
 
 project(template)
+message(STATUS ${cpp_files})
 add_executable(${PROJECT_NAME} ${cpp_files} ${cu_files})
 
 find_package(Halide REQUIRED)
