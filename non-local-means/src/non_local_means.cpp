@@ -163,11 +163,11 @@ void non_local_means_AVX512(cv::Mat_<cv::Vec3b> &src_, cv::Mat_<cv::Vec3b> &dest
                     }
                     else if (i < 32)
                     {
-                        dest_ptr[i] = dest_u2.m128i_u8[i];
+                        dest_ptr[i] = dest_u2.m128i_u8[i%16];
                     }
                     else
                     {
-                        dest_ptr[i] = dest_u3.m128i_u8[i];
+                        dest_ptr[i] = dest_u3.m128i_u8[i%16];
                     }
                 }
             }
