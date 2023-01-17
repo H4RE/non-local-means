@@ -15,7 +15,7 @@ __global__ void non_local_means_CUDA_(unsigned char *src, unsigned char *dest, i
 
     const int offset = patch_radius + search_radius;
     const int d_width = width - 2 * offset;
-    if (offset < x && x < width - offset && offset < y && y < height - offset)
+    if (offset <= x && x < width - offset && offset <= y && y < height - offset)
     {
         float intensity[3] = {};
         double weight_sum = 0.0;
