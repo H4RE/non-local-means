@@ -4,6 +4,7 @@
 #include <opencv2/opencv.hpp>
 #include <type_traits>
 #include "non_local_means.hpp"
+#include "non_local_means_halide.h"
 
 int main(int argc, char **argv)
 {
@@ -17,12 +18,12 @@ int main(int argc, char **argv)
         timer.start();
         non_local_means_AVX512(img, dest_AVX, 5, 2, 10.f, 10.f);
         timer.stop();
-        std::cout << "AVX" << timer.getTimeSec() << " [s]" << std::endl;
+        std::cout << "AVX:" << timer.getTimeSec() << " [s]" << std::endl;
     }
 
     // Cuda
     cv::Mat_<cv::Vec3b> dest_cuda = cv::Mat_<cv::Vec3b>::zeros(img.size());
-    std::cout << "CUDA: ";
+    std::cout << "CUDA:";
     non_local_means_CUDA(img, dest_cuda, 5, 2, 10.f, 10.f);
 
     // naive
@@ -34,20 +35,15 @@ int main(int argc, char **argv)
     std::cout << "Naive:" << timer.getTimeSec() << " [s]" << std::endl;
 
     // Halide
-    Halide::Buffer<uint8_t> src = Halide::Tools::load_image("./inu.jpg");
+    Halide::Runtime::Buffer<uint8_t, 3> src = Halide::Tools::load_image("./inu.jpg");
+    Halide::Runtime::Buffer<uint8_t, 3> dest_hb(src.width(), src.height(), src.channels());
     timer.reset();
     timer.start();
-    Halide::Func out = non_local_means_Halide(src, 5, 2);
-    out.compile_jit(Halide::get_jit_target_from_environment());
+    non_local_means_halide(src, 5, 2, 10.f, 10.f, dest_hb);
     timer.stop();
-    std::cout << timer.getTimeSec() << " [s]" << std::endl;
+    std::cout <<"Halide:" << timer.getTimeSec() << " [s]" << std::endl;
     cv::Mat_<cv::Vec3b> dest_h(cv::Size(src.width(), src.height()));
     {
-        timer.reset();
-        timer.start();
-        Halide::Buffer<uint8_t> h = out.realize({src.width(), src.height(), 3});
-        timer.stop();
-        std::cout << "Halide: " << timer.getTimeSec() << " [s]" << std::endl;
 
         for (int y = 0; y < src.height(); y++)
         {
@@ -55,7 +51,7 @@ int main(int argc, char **argv)
             {
                 for (int c = 0; c < src.channels(); c++)
                 {
-                    dest_h(y, x)[c] = h(x, y, c);
+                    dest_h(y, x)[c] = dest_hb(x, y, c);
                 }
             }
         }

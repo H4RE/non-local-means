@@ -5,7 +5,7 @@
 
 void non_local_means_CUDA(cv::Mat & src, cv::Mat & dest, int search_window, int patch_radius, float stdev_noise, float filter_param_h);
 void non_local_means_AVX512(cv::Mat_<cv::Vec3b> &src_, cv::Mat_<cv::Vec3b> &dest, int search_radius, int patch_radius, float stdev_noise, float filter_param_h);
-Halide::Func non_local_means_Halide(Halide::Buffer<uint8_t> &src, int search_radius, int patch_radius);
+// Halide::Func non_local_means_Halide(Halide::Buffer<uint8_t> &src, int search_radius, int patch_radius);
 
 template <typename T>
 void non_local_means(cv::Mat_<T> &src, cv::Mat_<T> &dest, int search_radius = 10, int patch_radius = 3)

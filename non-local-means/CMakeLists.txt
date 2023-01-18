@@ -1,20 +1,28 @@
 cmake_minimum_required(VERSION 3.25)
 project(non-local-means)
 
-file(GLOB cpp_files ./src/*.cpp)
-file(GLOB cuda_files ./src/*.cu)
+find_package(Halide REQUIRED)
+add_halide_generator(nlm_halide_generator SOURCES ./src/non_local_means_halide_generator.cpp)
+add_halide_library(non_local_means_halide FROM nlm_halide_generator)
+
 
 enable_language("CUDA")
 
-add_library(nlm-lib STATIC ${cpp_files} ${cuda_files})
+add_library(nlm-lib
+STATIC 
+./src/non_local_means.cpp
+./src/non_local_means.cu
+)
+
 target_compile_features(nlm-lib PRIVATE cxx_std_17)
 target_include_directories(nlm-lib PUBLIC "./include/")
+
 
 find_package(OpenCV REQUIRED)
 target_link_libraries(nlm-lib PRIVATE ${OpenCV_LIBS})
 
-find_package(Halide REQUIRED)
 target_link_libraries(nlm-lib PRIVATE Halide::Halide Halide::ImageIO)
+target_link_libraries(nlm-lib PUBLIC non_local_means_halide)
 
 
 find_package(OpenMP REQUIRED)
