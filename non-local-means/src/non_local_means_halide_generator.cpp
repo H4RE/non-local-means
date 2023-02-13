@@ -43,7 +43,7 @@ public:
         // Halide::Func dest;
         dest(x, y, c) = Halide::saturating_cast<uint8_t>(intensity(x, y, c) / weight_sum(x, y));
 
-        dest.compute_root().parallel(y).vectorize(x, 8).unroll(x, 4);
+        dest.compute_root().vectorize(x, 16).parallel(y);
     }
 };
 
